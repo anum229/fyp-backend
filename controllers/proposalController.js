@@ -620,7 +620,7 @@ const assignSupervisor = async (req, res) => {
                 formData.append("project_title", proposal.projectTitle);
                 formData.append("teacher_expertise_json", JSON.stringify(teacherExpertise));
 
-                const aiResponse = await axios.post("https://fyp-ai-review-proposals.onrender.com/", formData, {
+                const aiResponse = await axios.post("https://fyp-ai-review-proposals.onrender.com/review-proposal", formData, {
                     headers: formData.getHeaders(),
                     timeout: 60000,
                 });
