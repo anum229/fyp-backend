@@ -253,6 +253,7 @@ const aiReviewProposal = async (req, res) => {
         // Step 5: Send request to Python AI API
         const aiResponse = await axios.post("https://fyp-ai-review-proposals.onrender.com/review-proposal", formData, {
             headers: formData.getHeaders(),
+            timeout: 300000, // 5 minutes timeout
         });
 
         const { aiStatus, aiFeedback, aiFeedbackDescription, aiSuggestedSupervisor } = aiResponse.data;
@@ -633,7 +634,7 @@ const assignSupervisor = async (req, res) => {
                 console.log(`🤖 Sending to AI service: https://fyp-ai-review-proposals.onrender.com/review-proposal`);
                 const aiResponse = await axios.post("https://fyp-ai-review-proposals.onrender.com/review-proposal", formData, {
                     headers: formData.getHeaders(),
-                    timeout: 60000,
+                    timeout: 300000, // Increased to 5 minutes
                 });
 
                 console.log(`✅ AI Response received for Group ${proposal.groupId}:`, aiResponse.data);
@@ -670,9 +671,19 @@ const assignSupervisor = async (req, res) => {
             } catch (innerErr) {
                 console.error(`❌ Failed for Group ${proposal.groupId}:`, innerErr.message);
                 console.error(`❌ Error stack:`, innerErr.stack);
+                
+                let errorMessage = innerErr.message;
+                if (innerErr.code === 'ECONNABORTED' || innerErr.message.includes('timeout')) {
+                    errorMessage = 'AI service timeout - the request took too long to process';
+                } else if (innerErr.code === 'ENOTFOUND' || innerErr.code === 'ECONNREFUSED') {
+                    errorMessage = 'AI service connection failed - service may be unavailable';
+                } else if (innerErr.response?.status) {
+                    errorMessage = `AI service error (${innerErr.response.status}): ${innerErr.response.data?.message || innerErr.message}`;
+                }
+                
                 reviewedProposals.push({
                     groupId: proposal.groupId,
-                    error: innerErr.message
+                    error: errorMessage
                 });
             }
         }
