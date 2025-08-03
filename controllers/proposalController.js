@@ -251,7 +251,7 @@ const aiReviewProposal = async (req, res) => {
         formData.append("teacher_expertise_json", JSON.stringify(teacherExpertise));
 
         // Step 5: Send request to Python AI API
-        const aiResponse = await axios.post("http://127.0.0.1:8000/review-proposal", formData, {
+        const aiResponse = await axios.post("https://fyp-ai-review-proposals.onrender.com/review-proposal", formData, {
             headers: formData.getHeaders(),
         });
 
@@ -586,14 +586,19 @@ const assignSupervisor = async (req, res) => {
 
   const aiReviewAllPendingProposals = async (req, res) => {
     try {
+        console.log("🚀 Starting bulk AI review process...");
         const proposals = await Proposal.find({ aiStatus: "Pending" });
+        console.log(`📋 Found ${proposals.length} pending proposals`);
+        
         if (!proposals.length) {
+            console.log("ℹ️ No pending proposals found");
             return res.status(200).json({ success: true, message: "No pending proposals found." });
         }
 
         // Load static previous batch FYP list once
         const previousFypPdfPath = path.join(__dirname, "../data/FYP LIST batch 2020S Final.pdf");
         if (!fs.existsSync(previousFypPdfPath)) {
+            console.error("❌ Previous FYP PDF not found");
             return res.status(500).json({ success: false, message: "Previous FYP PDF not found in /data." });
         }
 
@@ -603,15 +608,20 @@ const assignSupervisor = async (req, res) => {
         teachers.forEach(t => {
             teacherExpertise[t._id] = t.expertise;
         });
+        console.log(`👨‍🏫 Loaded ${Object.keys(teacherExpertise).length} teachers' expertise`);
 
         const reviewedProposals = [];
 
         for (const proposal of proposals) {
             try {
+                console.log(`\n🔄 Processing Group ${proposal.groupId}: ${proposal.projectTitle}`);
+                
                 // Download proposal PDF from URL
+                console.log(`📥 Downloading PDF from: ${proposal.pdfUrl}`);
                 const proposalPdf = await axios.get(proposal.pdfUrl, { responseType: "arraybuffer" });
                 const tempPath = `temp_${proposal.groupId}.pdf`;
                 fs.writeFileSync(tempPath, proposalPdf.data);
+                console.log(`✅ PDF saved to: ${tempPath}`);
 
                 // Prepare form data for Python AI
                 const formData = new FormData();
@@ -620,14 +630,22 @@ const assignSupervisor = async (req, res) => {
                 formData.append("project_title", proposal.projectTitle);
                 formData.append("teacher_expertise_json", JSON.stringify(teacherExpertise));
 
+                console.log(`🤖 Sending to AI service: https://fyp-ai-review-proposals.onrender.com/review-proposal`);
                 const aiResponse = await axios.post("https://fyp-ai-review-proposals.onrender.com/review-proposal", formData, {
                     headers: formData.getHeaders(),
                     timeout: 60000,
                 });
 
+                console.log(`✅ AI Response received for Group ${proposal.groupId}:`, aiResponse.data);
                 const { aiStatus, aiFeedback, aiFeedbackDescription, aiSuggestedSupervisor } = aiResponse.data;
 
                 // Update proposal document
+                console.log(`💾 Updating database for Group ${proposal.groupId}:`);
+                console.log(`   - aiStatus: ${proposal.aiStatus} → ${aiStatus}`);
+                console.log(`   - aiFeedback: ${aiFeedback}`);
+                console.log(`   - aiFeedbackDescription: ${aiFeedbackDescription}`);
+                console.log(`   - aiSuggestedSupervisor: ${aiSuggestedSupervisor}`);
+                
                 proposal.aiStatus = aiStatus;
                 proposal.aiFeedback = aiFeedback;
                 proposal.aiFeedbackDescription = aiFeedbackDescription;
@@ -636,13 +654,22 @@ const assignSupervisor = async (req, res) => {
                     proposal.aiSuggestedSupervisor = aiSuggestedSupervisor;
                 }
 
-                await proposal.save();
+                console.log(`💾 Saving proposal to database...`);
+                const savedProposal = await proposal.save();
+                console.log(`✅ Proposal saved successfully:`, {
+                    groupId: savedProposal.groupId,
+                    aiStatus: savedProposal.aiStatus,
+                    aiReviewDate: savedProposal.aiReviewDate
+                });
+                
                 fs.unlinkSync(tempPath);
+                console.log(`🗑️ Temporary file deleted: ${tempPath}`);
 
                 reviewedProposals.push(proposal);
 
             } catch (innerErr) {
                 console.error(`❌ Failed for Group ${proposal.groupId}:`, innerErr.message);
+                console.error(`❌ Error stack:`, innerErr.stack);
                 reviewedProposals.push({
                     groupId: proposal.groupId,
                     error: innerErr.message
@@ -650,6 +677,7 @@ const assignSupervisor = async (req, res) => {
             }
         }
 
+        console.log(`\n🎉 Bulk AI review completed. Processed ${reviewedProposals.length} proposals`);
         res.status(200).json({
             success: true,
             message: `AI review completed for ${reviewedProposals.length} proposal(s).`,
@@ -657,7 +685,8 @@ const assignSupervisor = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Bulk AI Review Error:", error.message);
+        console.error("❌ Bulk AI Review Error:", error.message);
+        console.error("❌ Error stack:", error.stack);
         return res.status(500).json({
             success: false,
             message: `Internal Server Error: ${error.message}`
