@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const upload = multer();
 const previousBatchFypController = require('../controllers/previousBatchFypController');
 const { verifyToken, verifyFYPTeam } = require('../middleware/authMiddleware');
 
@@ -17,5 +19,14 @@ router.put('/update/:id', verifyToken, verifyFYPTeam, previousBatchFypController
 
 // Delete FYP (Only FYP Team)
 router.delete('/delete/:id', verifyToken, verifyFYPTeam, previousBatchFypController.deletePreviousBatchFyp);
+
+//Bulk Upload
+router.post(
+  '/bulkupload',
+  verifyToken,
+  verifyFYPTeam,
+  upload.single('file'),  // <<< MISSING IN YOUR CASE
+  previousBatchFypController.bulkUploadPreviousBatchFyps
+);
 
 module.exports = router;

@@ -1,4 +1,44 @@
 const PreviousBatchFyp = require('../models/previousBatchFypModel');
+const csv = require('csv-parser');
+const { Readable } = require('stream');
+
+exports.bulkUploadPreviousBatchFyps = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: 'No CSV file uploaded' });
+  }
+
+  const fyps = [];
+  const stream = Readable.from(req.file.buffer);
+
+  stream
+    .pipe(csv())
+    .on('data', (row) => {
+      // Parse comma-separated groupMembers
+      const groupMembersArray = row.groupMembers
+        ? row.groupMembers.split(',').map((member) => member.trim())
+        : [];
+
+      fyps.push({
+        groupID: row.groupID,
+        department: row.department,
+        groupMembers: groupMembersArray,
+        year: parseInt(row.year),
+        projectTitle: row.projectTitle,
+      });
+    })
+    .on('end', async () => {
+      try {
+        const insertedFyps = await PreviousBatchFyp.insertMany(fyps);
+        res.status(201).json({
+          message: 'Bulk upload successful',
+          added: insertedFyps.length,
+          data: insertedFyps,
+        });
+      } catch (error) {
+        res.status(500).json({ message: 'Bulk upload failed', error });
+      }
+    });
+};
 
 // Add Previous Batch FYP
 exports.addPreviousBatchFyp = async (req, res) => {
